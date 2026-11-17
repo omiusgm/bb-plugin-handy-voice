@@ -1,0 +1,28 @@
+.handy-voice-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 2rem;
+  min-width: 2rem;
+  padding: 0.375rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.handy-voice-button:hover:not(:disabled) { background: color-mix(in srgb, currentColor 10%, transparent); }
+.handy-voice-button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.handy-voice-button[data-recording="true"] { background: #b91c1c; color: #fff; }
+.handy-voice-button[data-recording="true"]:hover { background: #991b1b; }
+.handy-voice-button:disabled { cursor: progress; }
+.handy-voice-icon { width: 1rem; height: 1rem; flex: none; }
+.handy-voice-time { font-variant-numeric: tabular-nums; }
+.handy-voice-spinner { animation: handy-voice-spin 1s linear infinite; }
+@keyframes handy-voice-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .handy-voice-spinner { animation: none; } }

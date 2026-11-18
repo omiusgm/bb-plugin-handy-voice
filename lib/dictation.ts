@@ -6,6 +6,7 @@ export type DictationSnapshot = Readonly<{
   elapsedSecs: number;
   isStarting: boolean;
   targetKey: string | null;
+  lastError: string | null;
 }>;
 
 type Session = {
@@ -22,7 +23,7 @@ type Session = {
 // Владелец записи — модуль, а не экземпляр React-компонента.
 let session: Session | null = null;
 let snapshot: DictationSnapshot = Object.freeze({
-  status: "idle", elapsedSecs: 0, isStarting: false, targetKey: null,
+  status: "idle", elapsedSecs: 0, isStarting: false, targetKey: null, lastError: null,
 });
 const subscribers = new Set<() => void>();
 const visibleComposers = new Map<string, number>();
@@ -81,7 +82,19 @@ function fail(current: Session, message: string): void {
     }
   }
   reset(current);
+  publish({ lastError: message });
   current.onError(message);
+}
+
+/** Проверка возможностей не запрашивает доступ и не включает микрофон. */
+export function recordingSupportError(): string | null {
+  if (!globalThis.navigator?.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    return "Запись недоступна. Откройте BB в приложении или браузере с поддержкой микрофона.";
+  }
+  if (!["audio/webm", "audio/mp4", "audio/ogg"].some((mime) => MediaRecorder.isTypeSupported(mime))) {
+    return "Браузер не поддерживает запись WebM, MP4 или Ogg.";
+  }
+  return null;
 }
 
 async function finishRecording(current: Session): Promise<void> {
@@ -133,10 +146,11 @@ export async function startDictation(
   };
   // Блокировка и целевой handle сохраняются до запроса разрешения микрофона.
   session = current;
-  publish({ isStarting: true, targetKey: composer.key });
+  publish({ isStarting: true, targetKey: composer.key, lastError: null });
   try {
-    if (!globalThis.navigator?.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      fail(current, "Запись недоступна. Откройте BB в приложении или браузере с поддержкой микрофона.");
+    const supportError = recordingSupportError();
+    if (supportError) {
+      fail(current, supportError);
       return;
     }
     const mimeType = ["audio/webm", "audio/mp4", "audio/ogg"]

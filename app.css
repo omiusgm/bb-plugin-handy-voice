@@ -26,3 +26,9 @@
 .handy-voice-spinner { animation: handy-voice-spin 1s linear infinite; }
 @keyframes handy-voice-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .handy-voice-spinner { animation: none; } }
+
+/* Исключение из CONTRACT-ui.md: применять только после согласования. */
+button[data-handy-voice-suppressed="native"],
+button[data-handy-voice-suppressed="plugin"] {
+  display: none !important;
+}

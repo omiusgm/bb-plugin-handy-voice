@@ -94,7 +94,7 @@ test('denied microphone releases lock so a later start can succeed', async () =>
   const errors = [], a = composer('A');
   await env.mod.startDictation(a, async () => result('ok'), message => errors.push(message));
   assert.match(errors[0], /доступа к микрофону/i);
-  assert.deepEqual(env.mod.getSnapshot(), { status: 'idle', elapsedSecs: 0, isStarting: false, targetKey: null });
+  assert.deepEqual(env.mod.getSnapshot(), { status: 'idle', elapsedSecs: 0, isStarting: false, targetKey: null, lastError: errors[0] });
   fail = false;
   await env.mod.startDictation(a, async () => result('ok'), assert.fail);
   env.mod.stopDictation(); await tick();
@@ -135,4 +135,41 @@ test('recorder error releases microphone even when recorder.stop throws', async 
       mod.stopDictation();
     }
   }
+});
+
+test('unsupported capture reports availability without requesting personal audio', async () => {
+  let requested = 0;
+  const { mod } = await setup(async () => { requested++; throw new Error('must not record'); });
+  globalThis.MediaRecorder.isTypeSupported = () => false;
+  assert.match(mod.recordingSupportError(), /не поддерживает/);
+  const errors = [];
+  await mod.startDictation(composer('A'), async () => result('unused'), error => errors.push(error));
+  assert.equal(requested, 0);
+  assert.equal(errors.length, 1);
+  assert.equal(mod.getSnapshot().isStarting, false);
+  delete globalThis.MediaRecorder;
+  assert.match(mod.recordingSupportError(), /Запись недоступна/);
+});
+
+test('six minutes of recording and 71 seconds of processing retain the target and start lock', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: 1_000 });
+  const { mod, recorders, tracks } = await setup();
+  const a = composer('A'), b = composer('B');
+  let resolveResult;
+  const pending = new Promise(resolve => { resolveResult = resolve; });
+  await mod.startDictation(a, () => pending, assert.fail);
+  t.mock.timers.tick(360_000);
+  assert.equal(mod.getSnapshot().elapsedSecs, 360);
+  assert.equal(mod.getSnapshot().status, 'recording');
+  mod.stopDictation(); await tick();
+  t.mock.timers.tick(71_000);
+  assert.equal(mod.getSnapshot().status, 'transcribing');
+  await mod.startDictation(b, async () => result('wrong draft'), assert.fail);
+  assert.equal(recorders.length, 1);
+  resolveResult(result('long processing'));
+  await tick();
+  assert.equal(a.inserts[0].text, 'long processing');
+  assert.deepEqual(b.inserts, []);
+  assert.equal(tracks[0].stops, 1);
+  assert.equal(mod.getSnapshot().lastError, null);
 });

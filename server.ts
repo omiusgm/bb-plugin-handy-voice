@@ -16,7 +16,7 @@ import { z } from "zod";
 
 const DEFAULT_HANDY = "/Applications/Handy.app/Contents/MacOS/handy";
 const SYSTEM_FFMPEG = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"];
-/** Потолок BB для голосовой службы — 10 с; свой запас для CLI-вызовов. */
+/** Свой запас для CLI/RPC; таймаут штатной AI-службы задаёт версия BB. */
 const CLI_TIMEOUT_MS = 10 * 60_000;
 /** Собственный предел записи; это не утверждение о лимите транспорта BB. */
 const MAX_RECORDING_BYTES = 32 * 1024 * 1024;
@@ -24,6 +24,10 @@ const MAX_RECORDING_BASE64_CHARS = Math.ceil(MAX_RECORDING_BYTES / 3) * 4;
 const RECORDING_MIME_TYPES = new Set(["audio/webm", "audio/mp4", "audio/ogg"]);
 
 export const rpcContract = defineRpcContract({
+  dictationStatus: {
+    input: z.object({}).strict(),
+    output: z.object({ ready: z.boolean(), message: z.string().nullable() }).strict(),
+  },
   transcribeRecording: {
     input: z.object({
       base64: z.string().min(4).max(MAX_RECORDING_BASE64_CHARS)
@@ -243,6 +247,15 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   bb.rpc.register(rpcContract, {
+    async dictationStatus() {
+      try {
+        await resolveHandy();
+        await resolveFfmpeg();
+        return { ready: true, message: null };
+      } catch {
+        return { ready: false, message: "Диктовка недоступна. Проверьте Handy и ffmpeg: bb handy-voice status." };
+      }
+    },
     async transcribeRecording({ base64, mime }, { experimental_signal }) {
       const bytes = Buffer.from(base64, "base64");
       if (bytes.length === 0 || bytes.length > MAX_RECORDING_BYTES || bytes.toString("base64") !== base64) {
@@ -251,7 +264,7 @@ export default async function plugin(bb: BbPluginApi) {
           message: "Запись пуста, повреждена или превышает 32 МиБ",
         });
       }
-      // Свой RPC не проходит через 10-секундный путь AI-службы.
+      // Свой RPC не проходит через таймаут задачи voice в AI-службе.
       return transcribeBytes(bytes, extensionFor(mime, undefined), {
         signal: experimental_signal,
         timeoutMs: CLI_TIMEOUT_MS,
